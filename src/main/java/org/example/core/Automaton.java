@@ -34,7 +34,6 @@ public class Automaton {
 
     public void removeState(State state) {
         states.remove(state);
-        // Remove all transitions involving this state
         transitions.removeIf(t -> t.getFromState().equals(state) ||
                 t.getToState().equals(state));
         if (state.equals(initialState)) {
@@ -44,7 +43,6 @@ public class Automaton {
 
     public void addTransition(Transition transition) {
         transitions.add(transition);
-        // Add all individual symbols to alphabet
         for (String symbol : transition.getIndividualSymbols()) {
             alphabet.add(symbol);
         }
@@ -89,6 +87,7 @@ public class Automaton {
         return null;
     }
 
+    // Get single transition (for DEA)
     public Transition getTransition(State from, String symbol) {
         for (Transition t : transitions) {
             if (t.getFromState().equals(from) && t.acceptsSymbol(symbol)) {
@@ -96,6 +95,17 @@ public class Automaton {
             }
         }
         return null;
+    }
+
+    // Get all possible transitions for a symbol (for NEA)
+    public List<Transition> getAllTransitions(State from, String symbol) {
+        List<Transition> result = new ArrayList<>();
+        for (Transition t : transitions) {
+            if (t.getFromState().equals(from) && t.acceptsSymbol(symbol)) {
+                result.add(t);
+            }
+        }
+        return result;
     }
 
     public List<Transition> getTransitionsFrom(State state) {
@@ -108,12 +118,21 @@ public class Automaton {
         return result;
     }
 
-    // DFA Simulation
+    // Main simulation method - handles both DEA and NEA
     public boolean simulate(String input) {
         if (initialState == null) {
             return false;
         }
 
+        if (isNFA) {
+            return simulateNFA(input);
+        } else {
+            return simulateDFA(input);
+        }
+    }
+
+    // DEA simulation
+    private boolean simulateDFA(String input) {
         State currentState = initialState;
 
         for (char c : input.toCharArray()) {
@@ -121,23 +140,64 @@ public class Automaton {
             Transition transition = getTransition(currentState, symbol);
 
             if (transition == null) {
-                return false; // No valid transition
+                return false;
             }
-
             currentState = transition.getToState();
         }
 
         return currentState.isFinal();
     }
 
-    // Step-by-step simulation
-    public List<State> simulateSteps(String input) {
-        List<State> steps = new ArrayList<>();
+    // NEA simulation
+    private boolean simulateNFA(String input) {
+        // Set of current states (parallel execution)
+        Set<State> currentStates = new HashSet<>();
+        currentStates.add(initialState);
 
-        if (initialState == null) {
-            return steps;
+        for (char c : input.toCharArray()) {
+            String symbol = String.valueOf(c);
+            Set<State> nextStates = new HashSet<>();
+
+            for (State state : currentStates) {
+                List<Transition> transitions = getAllTransitions(state, symbol);
+                for (Transition t : transitions) {
+                    nextStates.add(t.getToState());
+                }
+            }
+
+            // If no next states, all paths are blocked
+            if (nextStates.isEmpty()) {
+                return false;
+            }
+
+            currentStates = nextStates;
         }
 
+        // Accept if any final state is reachable
+        for (State state : currentStates) {
+            if (state.isFinal()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public List<State> simulateSteps(String input) {
+        if (initialState == null) {
+            return new ArrayList<>();
+        }
+
+        if (isNFA) {
+            return simulateStepsNFA(input);
+        } else {
+            return simulateStepsDFA(input);
+        }
+    }
+
+    // DEA step-by-step
+    private List<State> simulateStepsDFA(String input) {
+        List<State> steps = new ArrayList<>();
         State currentState = initialState;
         steps.add(currentState);
 
@@ -154,6 +214,58 @@ public class Automaton {
         }
 
         return steps;
+    }
+
+    // NEA step-by-step
+    private List<State> simulateStepsNFA(String input) {
+        List<State> steps = new ArrayList<>();
+
+        // Use BFS to find a path
+        Queue<List<State>> queue = new LinkedList<>();
+        List<State> initialPath = new ArrayList<>();
+        initialPath.add(initialState);
+        queue.offer(initialPath);
+
+        String[] symbols = input.isEmpty() ? new String[0] : input.split("");
+
+        for (String symbol : symbols) {
+            Queue<List<State>> nextQueue = new LinkedList<>();
+
+            while (!queue.isEmpty()) {
+                List<State> currentPath = queue.poll();
+                State lastState = currentPath.get(currentPath.size() - 1);
+
+                List<Transition> transitions = getAllTransitions(lastState, symbol);
+
+                for (Transition t : transitions) {
+                    List<State> newPath = new ArrayList<>(currentPath);
+                    newPath.add(t.getToState());
+                    nextQueue.offer(newPath);
+                }
+            }
+
+            if (nextQueue.isEmpty()) {
+                // No path continues, return what we have
+                return steps.isEmpty() ? initialPath : steps;
+            }
+
+            queue = nextQueue;
+        }
+
+        // Return a successful path (preferably one ending in final state)
+        while (!queue.isEmpty()) {
+            List<State> path = queue.poll();
+            State lastState = path.get(path.size() - 1);
+            if (lastState.isFinal()) {
+                return path;
+            }
+            // Save first path as fallback
+            if (steps.isEmpty()) {
+                steps = path;
+            }
+        }
+
+        return steps.isEmpty() ? initialPath : steps;
     }
 
     public void clear() {

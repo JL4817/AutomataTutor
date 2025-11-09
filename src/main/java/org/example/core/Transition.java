@@ -1,8 +1,6 @@
 package org.example.core;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class Transition {
     private State fromState;
@@ -33,6 +31,7 @@ public class Transition {
 
     public boolean acceptsSymbol(String inputSymbol) {
         if (symbol.contains(",")) {
+            // Split by comma and check if any matches
             String[] symbols = symbol.split(",");
             for (String s : symbols) {
                 if (s.trim().equals(inputSymbol)) {
