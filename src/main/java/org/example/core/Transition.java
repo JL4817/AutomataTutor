@@ -1,5 +1,7 @@
 package org.example.core;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 public class Transition {
@@ -27,6 +29,33 @@ public class Transition {
 
     public void setSymbol(String symbol) {
         this.symbol = symbol;
+    }
+
+    public boolean acceptsSymbol(String inputSymbol) {
+        if (symbol.contains(",")) {
+            String[] symbols = symbol.split(",");
+            for (String s : symbols) {
+                if (s.trim().equals(inputSymbol)) {
+                    return true;
+                }
+            }
+            return false;
+        } else {
+            return symbol.equals(inputSymbol);
+        }
+    }
+
+    public List<String> getIndividualSymbols() {
+        List<String> result = new ArrayList<>();
+        if (symbol.contains(",")) {
+            String[] symbols = symbol.split(",");
+            for (String s : symbols) {
+                result.add(s.trim());
+            }
+        } else {
+            result.add(symbol);
+        }
+        return result;
     }
 
     @Override

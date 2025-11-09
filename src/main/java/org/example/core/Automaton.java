@@ -7,12 +7,22 @@ public class Automaton {
     private Set<Transition> transitions;
     private Set<String> alphabet;
     private State initialState;
+    private boolean isNFA;
 
     public Automaton() {
         this.states = new HashSet<>();
         this.transitions = new HashSet<>();
         this.alphabet = new HashSet<>();
         this.initialState = null;
+        this.isNFA = false; // Default to DEA
+    }
+
+    public boolean isNFA() {
+        return isNFA;
+    }
+
+    public void setNFA(boolean nfa) {
+        isNFA = nfa;
     }
 
     public void addState(State state) {
@@ -34,7 +44,10 @@ public class Automaton {
 
     public void addTransition(Transition transition) {
         transitions.add(transition);
-        alphabet.add(transition.getSymbol());
+        // Add all individual symbols to alphabet
+        for (String symbol : transition.getIndividualSymbols()) {
+            alphabet.add(symbol);
+        }
     }
 
     public void removeTransition(Transition transition) {
@@ -78,7 +91,7 @@ public class Automaton {
 
     public Transition getTransition(State from, String symbol) {
         for (Transition t : transitions) {
-            if (t.getFromState().equals(from) && t.getSymbol().equals(symbol)) {
+            if (t.getFromState().equals(from) && t.acceptsSymbol(symbol)) {
                 return t;
             }
         }
