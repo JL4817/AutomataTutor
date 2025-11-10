@@ -26,7 +26,7 @@ Intuitive and educational design for automata learning
 Extendable for future support (e.g., ε-transitions, regex parsing, etc.)
 
 ## Preview
-![AutomataSim GUI Preview](https://i.imgur.com/FBfoWq5.png)
+![AutomataSim GUI Preview](https://i.imgur.com/MzqZEkN.png)
 
 👤 Author
 Michael Jinpil Lee
