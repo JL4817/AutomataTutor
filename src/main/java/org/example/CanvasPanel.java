@@ -8,6 +8,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
+import java.util.*;
+import java.util.List;
 
 public class CanvasPanel extends JPanel {
     private Automaton automaton;
@@ -208,27 +210,100 @@ public class CanvasPanel extends JPanel {
             g2.setFont(new Font("Arial", Font.PLAIN, 12));
             g2.drawString(t.getSymbol(), from.x + 5, from.y - 55);
         } else {
-            // Check if there's a reverse transition
-            boolean hasReverse = hasReverseTransition(t);
+            // Count transitions between these two states
+            List<Transition> parallelTransitions = getParallelTransitions(t.getFromState(), t.getToState());
+            int index = parallelTransitions.indexOf(t);
+            int totalCount = parallelTransitions.size();
 
-            if (hasReverse) {
-                // Draw curved arrow
-                drawCurvedTransition(g2, t);
-            } else {
-                // Draw straight arrow
+            // Also check reverse direction
+            List<Transition> reverseTransitions = getParallelTransitions(t.getToState(), t.getFromState());
+            boolean hasReverse = !reverseTransitions.isEmpty();
+
+            // Check if line would pass through other states
+            boolean wouldIntersectStates = checkLineIntersectsStates(t.getFromState(), t.getToState());
+
+            if (totalCount == 1 && !hasReverse && !wouldIntersectStates) {
+                // Single transition, no reverse, no obstruction - draw straight
                 drawStraightTransition(g2, t);
+            } else {
+                // Multiple transitions, bidirectional, or obstructed - draw curved
+                drawCurvedTransitionWithIndex(g2, t, index, totalCount, hasReverse || wouldIntersectStates);
             }
         }
     }
 
-    private boolean hasReverseTransition(Transition t) {
-        for (Transition other : automaton.getTransitions()) {
-            if (other.getFromState().equals(t.getToState()) &&
-                    other.getToState().equals(t.getFromState())) {
-                return true;
+    private List<Transition> getParallelTransitions(State from, State to) {
+        List<Transition> result = new ArrayList<>();
+        for (Transition t : automaton.getTransitions()) {
+            if (t.getFromState().equals(from) && t.getToState().equals(to)) {
+                result.add(t);
             }
         }
+        return result;
+    }
+
+    private boolean checkLineIntersectsStates(State from, State to) {
+        // Check if a straight line the already existing would pass too close to any other state
+        int checkRadius = 45; // Distance threshold
+
+        for (State state : automaton.getStates()) {
+            if (state.equals(from) || state.equals(to)) {
+                continue;
+            }
+
+            // Calculate distance from state to line segment
+            Point statePos = state.getPosition();
+            Point fromPos = from.getPosition();
+            Point toPos = to.getPosition();
+
+            double distance = pointToLineDistance(
+                    statePos.x, statePos.y,
+                    fromPos.x, fromPos.y,
+                    toPos.x, toPos.y
+            );
+
+            if (distance < checkRadius) {
+                // Also check if the state is actually between the two endpoints
+                // (not behind or beyond them)
+                if (isPointBetweenEndpoints(statePos, fromPos, toPos)) {
+                    return true;
+                }
+            }
+        }
+
         return false;
+    }
+
+    private double pointToLineDistance(double px, double py, double x1, double y1, double x2, double y2) {
+        // Calculate distance from point
+        double lineLength = Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+
+        if (lineLength == 0) {
+            // Line segment is actually a point
+            return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+        }
+
+        // Calculate projection of point onto line
+        double t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / (lineLength * lineLength);
+        t = Math.max(0, Math.min(1, t)); // Clamp to [0, 1] to stay on segment
+
+        // Find closest point on line segment
+        double closestX = x1 + t * (x2 - x1);
+        double closestY = y1 + t * (y2 - y1);
+
+        // Return distance to closest point
+        return Math.sqrt((px - closestX) * (px - closestX) + (py - closestY) * (py - closestY));
+    }
+
+    private boolean isPointBetweenEndpoints(Point p, Point start, Point end) {
+        // Check if point p is roughly between start and end (not behind or beyond)
+        double dotProduct = (p.x - start.x) * (end.x - start.x) + (p.y - start.y) * (end.y - start.y);
+        double squaredLength = (end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y);
+
+        if (squaredLength == 0) return false;
+
+        double t = dotProduct / squaredLength;
+        return t > 0.1 && t < 0.9; // Between endpoints with some margin
     }
 
     private void drawStraightTransition(Graphics2D g2, Transition t) {
@@ -254,7 +329,7 @@ public class CanvasPanel extends JPanel {
         drawTransitionLabel(g2, t.getSymbol(), midX, midY);
     }
 
-    private void drawCurvedTransition(Graphics2D g2, Transition t) {
+    private void drawCurvedTransitionWithIndex(Graphics2D g2, Transition t, int index, int totalCount, boolean forceCurve) {
         Point from = t.getFromState().getPosition();
         Point to = t.getToState().getPosition();
 
@@ -271,8 +346,30 @@ public class CanvasPanel extends JPanel {
         double perpX = -dy / distance;
         double perpY = dx / distance;
 
-        // Offset the curve
-        double curveOffset = 20; // How much to curve
+        double baseOffset = 70; // How far the curve should be or how "curved"
+        double curveOffset;
+
+        if (forceCurve && totalCount == 1) {
+            // Single transition but needs to curve (e.g., to avoid other states)
+            curveOffset = baseOffset;
+        } else if (totalCount == 1) {
+            // Single transition, no force curve
+            curveOffset = baseOffset;
+        } else {
+            // Multiple parallel transitions - spread them out
+            // Center them around 0, with spacing between each
+            double spacing = 25;
+            double totalSpread = (totalCount - 1) * spacing;
+            curveOffset = (index * spacing) - (totalSpread / 2.0);
+
+            // Add base offset to move away from straight line
+            if (curveOffset >= 0) {
+                curveOffset += baseOffset;
+            } else {
+                curveOffset -= baseOffset;
+            }
+        }
+
         double controlX = midX + perpX * curveOffset;
         double controlY = midY + perpY * curveOffset;
 
@@ -297,8 +394,10 @@ public class CanvasPanel extends JPanel {
         double arrowAngle = Math.atan2(endY - controlY, endX - controlX);
         drawArrowHead(g2, endX, endY, arrowAngle);
 
-        // Draw label at control point
-        drawTransitionLabel(g2, t.getSymbol(), (int)controlX, (int)controlY);
+        // Draw label at control point (slightly offset for better visibility)
+        int labelOffsetX = (int)(perpX * 10);
+        int labelOffsetY = (int)(perpY * 10);
+        drawTransitionLabel(g2, t.getSymbol(), (int)controlX + labelOffsetX, (int)controlY + labelOffsetY);
     }
 
     private void drawArrowHead(Graphics2D g2, int x, int y, double angle) {
